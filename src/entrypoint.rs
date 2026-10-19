@@ -680,6 +680,8 @@ pub(crate) fn run() -> eframe::Result<()> {
                 Ok(Box::new(Shell {
                     app,
                     recovery_checked: false,
+                    #[cfg(target_os = "macos")]
+                    last_frame: None,
                     #[cfg(windows)]
                     thumbbar,
                     #[cfg(feature = "demo")]
@@ -887,6 +889,13 @@ fn native_options(
 }
 
 fn profile_options(mut options: eframe::NativeOptions) -> eframe::NativeOptions {
+    // macOS caps an OpenGL swap with vsync at 60 Hz, even on a 120 Hz
+    // ProMotion screen. The window server composites every window, so
+    // swapping without vsync does not tear; `Shell::ui` paces frames instead.
+    #[cfg(target_os = "macos")]
+    {
+        options.glow_options.vsync = false;
+    }
     if options.persist_window {
         options.persistence_path = eframe::storage_dir("spotifast").map(|dir| dir.join("app.ron"));
     }
@@ -1212,6 +1221,9 @@ struct Shell {
     app: fastframe_shell::Held<app::App>,
     /// Whether this window's first frame checked that a monitor shows it.
     recovery_checked: bool,
+    /// When the last frame started, to pace frames without swap vsync.
+    #[cfg(target_os = "macos")]
+    last_frame: Option<std::time::Instant>,
     #[cfg(windows)]
     thumbbar: spotifast::thumbbar::ThumbBar,
     /// A pending `--demo-shot` capture, if this is a screenshot run.
@@ -1477,6 +1489,19 @@ impl eframe::App for Shell {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Without swap vsync, back-to-back repaints would spin; hold frames
+        // to 120 per second at most.
+        #[cfg(target_os = "macos")]
+        {
+            const FRAME: std::time::Duration = std::time::Duration::from_nanos(8_333_334);
+            if let Some(wait) = self
+                .last_frame
+                .and_then(|last| (last + FRAME).checked_duration_since(std::time::Instant::now()))
+            {
+                std::thread::sleep(wait);
+            }
+            self.last_frame = Some(std::time::Instant::now());
+        }
         let mut stalls = std::mem::take(&mut self.stalls);
         stalls.ui(|| self.draw(ui));
         self.stalls = stalls;
