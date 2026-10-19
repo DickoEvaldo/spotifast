@@ -180,6 +180,10 @@ aes = "0.8"
 ctr = "0.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Personal fork: draw the macOS window through wgpu on Metal. macOS caps an
+# OpenGL vsync swap at 60 Hz; a Metal layer follows a ProMotion screen to
+# 120 Hz. Other targets keep glow.
+eframe = { version = "0.36", default-features = false, features = ["wgpu"] }
 apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 # The application menus and Dock menu (src/mac_menu.rs). "exception" lets
 # src/mac_touchbar_crash_guard.rs catch a specific AppKit Objective-C
@@ -228,7 +232,9 @@ tokio = { version = "1", features = ["test-util"] }
 winresource = "0.1"
 
 [features]
-default = ["milkdrop"]
+# Personal fork: MilkDrop draws through OpenGL, so it is left out of the
+# Metal build.
+default = []
 # Sample data and screenshot flags; never part of a release build.
 demo = []
 # MilkDrop, through libprojectM: a C++ library that CMake builds into the
